@@ -1,2 +1,2 @@
 # Chatgpt_Script
-Get Email for Chatgpt teacher for free 
+## guide to run the script
