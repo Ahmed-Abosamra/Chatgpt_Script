@@ -63,7 +63,7 @@ Follow these steps to run the script on Linux:
 - **Permission denied (Linux)**: Try running with `sudo` or check file permissions
 - **Module errors**: Install required dependencies using `pip install -r requirements.txt`
 
-## ⚠️ Warning
+## ⛔ Warning
 
 The account will be deleted after 24 hours.
 You must run the script again to create a new account and use it.
