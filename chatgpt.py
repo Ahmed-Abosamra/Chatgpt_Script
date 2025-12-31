@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Temporary Email Address Generator
-Creates disposable email addresses using temp-mail API.
+ChatGPT Account Setup Assistant
+Creates temporary email addresses with password generation for ChatGPT signup.
 Cross-platform compatible (Linux, Windows, macOS).
 Zero external dependencies - uses only Python standard library.
 """
@@ -14,6 +14,7 @@ import sys
 import os
 import ssl
 import socket
+import webbrowser
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
@@ -69,7 +70,7 @@ def print_banner():
     """Display the application banner."""
     banner = f"""
 {Colors.CYAN}{Colors.BOLD}╔══════════════════════════════════════════════════════════════╗
-║           📧  Temporary Email Generator  📧                  ║
+║        📧  ChatGPT Account Setup Assistant  📧               ║
 ╚══════════════════════════════════════════════════════════════╝{Colors.RESET}
 """
     print(banner)
@@ -89,15 +90,32 @@ def print_status(message: str, status: str = "info"):
     print(f"  {icon}  {message}")
 
 
-def print_result(email: str, link: str):
-    """Print the successful result in a formatted box."""
+def print_credentials_box(email: str, password: str, inbox_link: str):
+    """Print the credentials in a formatted box."""
     print()
     print(f"{Colors.GREEN}{Colors.BOLD}╔══════════════════════════════════════════════════════════════╗")
     print(f"║                    ✅  SUCCESS  ✅                           ║")
     print(f"╚══════════════════════════════════════════════════════════════╝{Colors.RESET}")
     print()
-    print(f"  {Colors.BOLD}📬 Email:{Colors.RESET}  {Colors.CYAN}{email}{Colors.RESET}")
-    print(f"  {Colors.BOLD}🔗 Link:{Colors.RESET}   {Colors.BLUE}{link}{Colors.RESET}")
+    print(f"  {Colors.BOLD}Your Credentials:{Colors.RESET}")
+    print()
+    print(f"  {Colors.BOLD}📧 Email:{Colors.RESET}    {Colors.CYAN}{email}{Colors.RESET}")
+    print(f"  {Colors.BOLD}🔑 Password:{Colors.RESET} {Colors.YELLOW}{password}{Colors.RESET}")
+    print()
+    print(f"  {Colors.BOLD}📬 Inbox:{Colors.RESET}    {Colors.BLUE}{inbox_link}{Colors.RESET}")
+    print()
+    print(f"  {Colors.BOLD}{Colors.YELLOW}⚠ Save these credentials! Account expires in 24 hours.{Colors.RESET}")
+    print()
+
+
+def print_instructions():
+    """Print signup instructions."""
+    print()
+    print(f"  {Colors.BOLD}Next Steps:{Colors.RESET}")
+    print(f"  {Colors.DIM}1.{Colors.RESET} Open the inbox link above in a {Colors.BOLD}private/incognito{Colors.RESET} window")
+    print(f"  {Colors.DIM}2.{Colors.RESET} Go to {Colors.CYAN}https://chatgpt.com/k12-verification{Colors.RESET}")
+    print(f"  {Colors.DIM}3.{Colors.RESET} Sign up using the email and password above")
+    print(f"  {Colors.DIM}4.{Colors.RESET} Check the inbox for the verification email")
     print()
 
 
@@ -138,6 +156,30 @@ def random_name(length: int = 8) -> str:
     return "".join(random.choice(string.ascii_lowercase) for _ in range(length))
 
 
+def generate_password(length: int = 16) -> str:
+    """Generate a secure random password."""
+    lowercase = string.ascii_lowercase
+    uppercase = string.ascii_uppercase
+    digits = string.digits
+    special = "!@#$%&*"
+    
+    # Guarantee at least one of each type
+    password = [
+        random.choice(lowercase),
+        random.choice(uppercase),
+        random.choice(digits),
+        random.choice(special),
+    ]
+    
+    # Fill the rest with random characters
+    all_chars = lowercase + uppercase + digits + special
+    password.extend(random.choice(all_chars) for _ in range(length - 4))
+    
+    # Shuffle to randomize position
+    random.shuffle(password)
+    return "".join(password)
+
+
 def calculate_backoff(attempt: int) -> float:
     """Calculate exponential backoff delay with jitter."""
     delay = min(BASE_DELAY * (2 ** attempt), MAX_DELAY)
@@ -146,17 +188,9 @@ def calculate_backoff(attempt: int) -> float:
 
 
 def make_request(url: str, payload: dict) -> tuple[int, str]:
-    """
-    Make an HTTP POST request using only standard library.
-    
-    Returns:
-        tuple of (status_code, response_body)
-    """
+    """Make an HTTP POST request."""
     data = json.dumps(payload).encode("utf-8")
-    
     request = Request(url, data=data, headers=HEADERS, method="POST")
-    
-    # Create SSL context (required for HTTPS)
     context = ssl.create_default_context()
     
     try:
@@ -171,7 +205,7 @@ def create_address() -> dict | None:
     Attempt to create a temporary email address.
     
     Returns:
-        dict with 'email' and 'link' on success, None on failure.
+        dict with 'email', 'link', and 'jwt' on success, None on failure.
     """
     for attempt in range(MAX_RETRIES):
         name = random_name()
@@ -187,7 +221,6 @@ def create_address() -> dict | None:
         try:
             status_code, body = make_request(API_URL, payload)
             
-            # Handle non-200 status codes
             if status_code == 429:
                 print_status("Rate limited (429) — backing off...", "warning")
                 time.sleep(calculate_backoff(attempt))
@@ -203,20 +236,17 @@ def create_address() -> dict | None:
                 time.sleep(BASE_DELAY)
                 continue
             
-            # Check for empty response
             body = body.strip()
             if not body:
                 print_status("Empty response — retrying...", "retry")
                 time.sleep(BASE_DELAY)
                 continue
             
-            # Check for Cloudflare or HTML page
             if "<html" in body.lower() or "cloudflare" in body.lower():
                 print_status("Cloudflare challenge detected — backing off...", "warning")
                 time.sleep(calculate_backoff(attempt))
                 continue
             
-            # Parse JSON response
             try:
                 data = json.loads(body)
             except json.JSONDecodeError:
@@ -224,18 +254,16 @@ def create_address() -> dict | None:
                 time.sleep(BASE_DELAY)
                 continue
             
-            # Validate JWT
             jwt = data.get("jwt")
             if not jwt:
                 print_status("No JWT in response — retrying...", "retry")
                 time.sleep(BASE_DELAY)
                 continue
             
-            # Success!
             email = data.get("address", f"{name}@{DEFAULT_DOMAIN}")
             link = f"https://em.bjedu.tech/en?jwt={jwt}"
             
-            return {"email": email, "link": link}
+            return {"email": email, "link": link, "jwt": jwt}
         
         except socket.timeout:
             print_status("Request timed out — retrying...", "warning")
@@ -257,24 +285,61 @@ def create_address() -> dict | None:
     return None
 
 
+def open_url(url: str) -> bool:
+    """Open URL in default browser."""
+    try:
+        webbrowser.open(url)
+        return True
+    except Exception:
+        return False
+
+
 def main():
     """Main entry point."""
     print_banner()
-    print_status("Starting email generation...", "info")
+    
+    # Generate password first
+    print_status("Generating secure password...", "info")
+    password = generate_password(16)
+    print_status(f"Password generated: {Colors.YELLOW}{password}{Colors.RESET}", "success")
     print()
+    
+    # Create email
+    print_status("Creating temporary email address...", "info")
     
     try:
         result = create_address()
         
-        if result:
-            print_result(result["email"], result["link"])
-            return 0
-        else:
+        if not result:
             print_error_box(
-                "Maximum Retries Exceeded",
-                f"Failed to create email after {MAX_RETRIES} attempts. Please try again later."
+                "Email Creation Failed",
+                f"Failed to create email after {MAX_RETRIES} attempts. Please try again."
             )
             return 1
+        
+        email = result["email"]
+        inbox_link = result["link"]
+        
+        # Show credentials
+        print_credentials_box(email, password, inbox_link)
+        
+        # Show instructions
+        print_instructions()
+        
+        # Ask if user wants to open browser
+        print(f"  {Colors.BOLD}Open inbox in browser? [Y/n]:{Colors.RESET} ", end="")
+        try:
+            response = input().strip().lower()
+            if response != 'n':
+                if open_url(inbox_link):
+                    print_status("Inbox opened in browser", "success")
+                else:
+                    print_status("Could not open browser automatically", "warning")
+        except EOFError:
+            pass
+        
+        print()
+        return 0
     
     except KeyboardInterrupt:
         print()
